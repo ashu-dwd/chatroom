@@ -1,0 +1,242 @@
+ function toggleMenu() {
+        var menu = document.getElementById("menu");
+        menu.classList.toggle("active");
+    }
+
+    $(document).ready(function() {
+        let user = "<?php echo($user) ?>";
+        let roomname = "<?php echo($room) ?>";
+
+        function toggleMenu() {
+            var menu = document.getElementById("menu");
+            menu.classList.toggle("active");
+        }
+        // Disabling chats
+        $("#disable-chats").click(function(e) {
+            e.preventDefault();
+            var admin = $('#username').text().trim(); // Admin's username
+            var currentText = $(this).text(); // Current button text
+
+            if (user !== admin) { // Fixed the comparison operator
+                alert("You can't disable chats. Contact the admin: " + admin);
+                console.log(("You can't disable chats. Contact the admin: " + admin));
+            } else {
+                // Toggle between Enable and Disable text
+                if (currentText === "Enable Chats") {
+                    $(this).text("Disable Chats");
+                } else {
+                    $(this).text("Enable Chats");
+                }
+
+                // AJAX request to update the chat status
+                $.ajax({
+                    type: "POST",
+                    url: "disable-chats.php",
+                    data: {
+                        action: roomname,
+                        user: admin
+                    },
+                    success: function(response) {
+                        console.log(response);
+                        if (response == 1) {
+                            console.log("Chat status updated successfully.");
+                        } else {
+                            console.log("Failed to update chat status.");
+                        }
+                    }
+                });
+            }
+        });
+
+        //load room actions
+        function loadActions() {
+            $.ajax({
+                url: "load-room-actions.php",
+                type: "POST",
+                data: {
+                    roomname: roomname,
+                    user: user
+                },
+                success: function(response) {
+                    //console.log(response);
+                    if (response == 1) {
+                        $("#chat_msg").attr("disabled", true);
+                        $("#btn").attr("disabled", true);
+
+                        // Setting the message to show chat is disabled
+                        $("#chat_msg").attr("placeholder", "Chat is Disabled by Admin");
+                    } else if (response == 0) {
+                        // Enable chat input and button when chat is enabled
+                        $("#chat_msg").attr("disabled", false);
+                        $("#btn").attr("disabled", false);
+                        $("#chat_msg").attr("placeholder", "Type your message...");
+                    }
+                }
+            });
+        }
+
+        // Repeatedly call the function every second
+        setInterval(loadActions, 1000);
+
+        function scrollToBottom() {
+            let chatContainer = document.getElementById("chat");
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function loadChats() {
+            $.ajax({
+                url: "chat-load.php",
+                type: "POST",
+                data: {
+                    roomname: roomname,
+                    user: user
+                },
+                success: function(data) {
+                    $("#chat").html(data);
+                    scrollToBottom();
+                },
+                error: function(xhr, status, error) {
+                    console.error("An error occurred while loading chats: " + error);
+                }
+            });
+        }
+
+        loadChats();
+        setInterval(loadChats, 500);
+
+        $("#submit-btn").on("click", function(e) {
+            e.preventDefault();
+            let chat_msg = $("#chat_msg").val().trim();
+            if (chat_msg !== "") {
+                $.ajax({
+                    url: "home_action.php",
+                    type: "POST",
+                    data: {
+                        name: user,
+                        chatmsg: chat_msg,
+                        roomname: roomname
+                    },
+                    success: function(data) {
+                        loadChats();
+                        $("#dataForm").trigger("reset");
+                        console.log(data);
+                    },
+                });
+            }
+        });
+
+        $(document).on("dblclick", ".msg.right-msg", function() {
+            let chatId = $(this).data("chat_id");
+            $.ajax({
+                url: "delete-chat.php",
+                type: "POST",
+                data: {
+                    id: chatId
+                },
+                success: function(data) {
+                    console.log(data);
+                    if (data == 1) {
+                        $(this).closest("div.msg").fadeOut(1000);
+                        $("#msg")
+                            .html("Deleted successfully")
+                            .slideDown()
+                            .fadeOut(2000);
+                        $("#error-msg").slideUp();
+                    } else {
+                        $("#error-msg")
+                            .html("Can\'t delete record")
+                            .slideDown()
+                            .fadeOut(3000);
+                        $("#msg").slideUp();
+                    }
+                }.bind(this),
+            });
+        });
+
+        function shareLink() {
+            let currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.delete("name");
+            $("#shareLink").text(currentUrl.toString());
+        }
+
+        $("#share").on("click", shareLink);
+
+        $("#copyLinkButton").on("click", function() {
+            const linkToCopy = $("#shareLink").text();
+            navigator.clipboard.writeText(linkToCopy).then(() => {
+                const originalText = $(this).text();
+                $(this).text("Link copied!");
+                setTimeout(() => $(this).text(originalText), 2000);
+            }).catch(err => {
+                console.error("Could not copy text: ", err);
+            });
+        });
+
+        function loadStatus() {
+            $.ajax({
+                url: "user-status.php",
+                type: "POST",
+                data: {
+                    roomname: roomname
+                },
+                success: function(data) {
+                    $("#user-status").html(data);
+                },
+            });
+        }
+
+        loadStatus();
+        setInterval(loadStatus, 100);
+        let typingTimer;
+        let typingInterval = 100;
+        $("#chat_msg").on("keypress", function() {
+            clearTimeout(typingTimer); // Clear the previous timer
+
+            // Send "typing" status
+            updateTypingStatus(1);
+
+            // Set a new timer to send "not typing" status after the typing interval
+            typingTimer = setTimeout(function() {
+                updateTypingStatus(0);
+            }, typingInterval);
+        });
+
+        // Function to update typing status
+        function updateTypingStatus(isTyping) {
+            // Ensure that user and roomname variables are set correctly
+            if (typeof user !== "undefined" && typeof roomname !== "undefined") {
+                $.ajax({
+                    type: "POST",
+                    url: "update_typing_status.php",
+                    data: {
+                        user: user,
+                        room: roomname,
+                        is_typing: isTyping
+                    },
+                    success: function(response) {
+                        console.log("Typing status updated:", response);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error("An error occurred while updating typing status:", error);
+                    }
+                });
+            } else {
+                console.error("User or room name is not defined.");
+            }
+        }
+
+        function checkTypingStatus() {
+            $.ajax({
+                type: "POST",
+                url: "get_typing_status.php",
+                data: {
+                    room: roomname
+                },
+                success: function(response) {
+                    $("#typingStatus").html(response);
+                }
+            });
+        }
+
+        setInterval(checkTypingStatus, 500); // Check every 2 seconds
+    });
